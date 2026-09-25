@@ -10,6 +10,7 @@ the world. No server. No account. Just install and talk.
 - **Post** blog entries that persist across sessions
 - **Search** all cached posts by name, location, or text
 - **Find** users by name
+- **Edit your profile** with searchable bio and tags
 - **Vouch** for good users, downvote bad ones
 - **Direct message** anyone by clicking their name
 
@@ -61,11 +62,11 @@ On first launch, click **Set Name** to pick a name and location.
 
 ## Commands in the GUI
 
-- **Set Name** — your identity
+- **Edit Profile** — update your name, location, searchable bio, and tags
 - **Refresh Peers** — update the user list
 - **Send (Enter)** — send a chat message to the selected peer (or broadcast)
 - **Post (Ctrl+Enter)** — publish a blog post to everyone
-- **Search** — filter the feed live
+- **Search** — filter the feed and find peers by name, location, bio, or tags
 
 ## How it works
 
