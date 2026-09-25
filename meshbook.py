@@ -47,6 +47,7 @@ class App:
             'posts': {},
             'users': {},
             'reputation': {},
+            'products': {},
             'seen_seqs': set(),
         }
         self.lock = threading.Lock()
@@ -100,6 +101,8 @@ class App:
         self.status_label.pack(side=tk.LEFT, padx=10)
 
         tk.Button(top, text="Edit Profile", command=self.dialog_profile,
+                  bg="#333", fg="#eee", relief=tk.FLAT).pack(side=tk.RIGHT, padx=4, pady=4)
+        tk.Button(top, text="Store", command=self.open_store,
                   bg="#333", fg="#eee", relief=tk.FLAT).pack(side=tk.RIGHT, padx=4, pady=4)
         tk.Button(top, text="Refresh Peers", command=self.refresh_peers,
                   bg="#333", fg="#eee", relief=tk.FLAT).pack(side=tk.RIGHT, padx=4, pady=4)
@@ -345,6 +348,24 @@ class App:
             self.add_feed('system', f"vouch: {src_id[:4]} -> {target[:4]} {delta:+d}")
             self.refresh_peers()
 
+        elif cmd == 'PRODUCT':
+            try:
+                product = json.loads(args)
+            except (TypeError, json.JSONDecodeError):
+                return
+            if not isinstance(product, dict):
+                return
+            product_id = str(product.get('id', '')).strip()
+            name = str(product.get('name', '')).strip()
+            if not product_id or not name:
+                return
+            product['seller'] = src_id
+            product['updated_at'] = now
+            with self.lock:
+                self.state['products'][f"{src_id}/{product_id}"] = product
+            if hasattr(self, 'store_window') and self.store_window.winfo_exists():
+                self.refresh_store()
+
     # ---------- MQTT ----------
 
     def on_connect(self, client, userdata, flags, rc):
@@ -389,6 +410,11 @@ class App:
             loc = profile['location']
         self.publish(self.make_frame('HELLO', f"{name}|{loc}"))
         self.publish(self.make_frame('PROFILE', json.dumps(profile, ensure_ascii=True)))
+        with self.lock:
+            products = list(self.state.get('products', {}).values())
+        for product in products:
+            if product.get('seller', self.state['my_id']) == self.state['my_id']:
+                self.publish(self.make_frame('PRODUCT', json.dumps(product, ensure_ascii=True)))
         # mark ourselves as online
         with self.lock:
             self.state['users'][self.state['my_id']] = {
@@ -443,6 +469,115 @@ class App:
 
         tk.Button(win, text="Save", command=save, bg="#2a5a3a", fg="#eee",
                   relief=tk.FLAT).pack(pady=10)
+
+    def open_store(self):
+        if hasattr(self, 'store_window') and self.store_window.winfo_exists():
+            self.store_window.lift()
+            return
+        self.store_window = tk.Toplevel(self.root)
+        self.store_window.title("MeshBook Store")
+        self.store_window.geometry("850x500")
+        self.store_window.configure(bg="#111")
+
+        top = tk.Frame(self.store_window, bg="#111")
+        top.pack(fill=tk.X, padx=8, pady=8)
+        tk.Label(top, text="Search products:", bg="#111", fg="#8cf").pack(side=tk.LEFT)
+        self.store_search_var = tk.StringVar()
+        self.store_search_var.trace_add('write', lambda *_: self.refresh_store())
+        tk.Entry(top, textvariable=self.store_search_var, bg="#1a1a1a",
+                 fg="#eee", insertbackground="#8cf").pack(side=tk.LEFT, fill=tk.X,
+                                                          expand=True, padx=6)
+        tk.Button(top, text="Add Product", command=self.dialog_product,
+                  bg="#2a5a3a", fg="#eee", relief=tk.FLAT).pack(side=tk.RIGHT)
+
+        columns = ("seller", "name", "category", "subcategory", "type",
+                   "serial", "price", "details")
+        self.store_tree = ttk.Treeview(self.store_window, columns=columns,
+                                       show="headings", height=18)
+        headings = {
+            "seller": "Seller", "name": "Product", "category": "Category",
+            "subcategory": "Subcategory", "type": "Type", "serial": "Serial no.",
+            "price": "Price", "details": "Description",
+        }
+        widths = {"seller": 90, "name": 130, "category": 100,
+                  "subcategory": 110, "type": 90, "serial": 100,
+                  "price": 80, "details": 220}
+        for column in columns:
+            self.store_tree.heading(column, text=headings[column])
+            self.store_tree.column(column, width=widths[column], anchor=tk.W)
+        self.store_tree.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        self.refresh_store()
+
+    def refresh_store(self):
+        if not hasattr(self, 'store_tree') or not self.store_tree.winfo_exists():
+            return
+        query = getattr(self, 'store_search_var', tk.StringVar()).get().strip().lower()
+        for item in self.store_tree.get_children():
+            self.store_tree.delete(item)
+        with self.lock:
+            products = list(self.state.get('products', {}).items())
+            users = dict(self.state.get('users', {}))
+        for key, product in sorted(products, key=lambda item: (
+                item[1].get('category', ''), item[1].get('subcategory', ''),
+                item[1].get('name', ''))):
+            seller_id = product.get('seller', key.split('/', 1)[0])
+            seller = users.get(seller_id, {}).get('name', seller_id[:8])
+            values = (
+                seller, product.get('name', ''), product.get('category', ''),
+                product.get('subcategory', ''), product.get('type', ''),
+                product.get('serial', ''), product.get('price', ''),
+                product.get('description', ''),
+            )
+            if query and query not in ' '.join(str(value) for value in values).lower():
+                continue
+            self.store_tree.insert('', tk.END, values=values)
+
+    def dialog_product(self):
+        win = tk.Toplevel(self.store_window)
+        win.title("Add store product")
+        win.geometry("430x430")
+        win.configure(bg="#1a1a1a")
+        fields = (
+            ("Product name", "name"),
+            ("Category", "category"),
+            ("Subcategory", "subcategory"),
+            ("Type", "type"),
+            ("Serial number", "serial"),
+            ("Price / trade", "price"),
+            ("Description / contact", "description"),
+        )
+        variables = {}
+        for label, key in fields:
+            tk.Label(win, text=label + ":", bg="#1a1a1a", fg="#eee").pack(
+                anchor=tk.W, padx=10, pady=(7, 0))
+            variables[key] = tk.StringVar()
+            tk.Entry(win, textvariable=variables[key], bg="#222", fg="#eee",
+                     insertbackground="#8cf").pack(fill=tk.X, padx=10)
+
+        def save():
+            product = {
+                'id': uuid.uuid4().hex[:10],
+                'name': variables['name'].get().strip()[:80],
+                'category': variables['category'].get().strip()[:40],
+                'subcategory': variables['subcategory'].get().strip()[:40],
+                'type': variables['type'].get().strip()[:60],
+                'serial': variables['serial'].get().strip()[:80],
+                'price': variables['price'].get().strip()[:40],
+                'description': variables['description'].get().strip()[:240],
+                'seller': self.state['my_id'],
+            }
+            if not product['name'] or not product['category']:
+                messagebox.showerror("Product", "Product name and category are required.")
+                return
+            with self.lock:
+                self.state['products'][f"{self.state['my_id']}/{product['id']}"] = product
+            self.save_state()
+            self.publish(self.make_frame('PRODUCT', json.dumps(product, ensure_ascii=True)))
+            self.refresh_store()
+            win.destroy()
+
+        tk.Button(win, text="Publish product", command=save, bg="#2a5a3a",
+                  fg="#eee", relief=tk.FLAT).pack(pady=12)
 
     def send_chat(self):
         text = self.input.get("1.0", tk.END).strip()

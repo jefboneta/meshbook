@@ -11,6 +11,8 @@ the world. No server. No account. Just install and talk.
 - **Search** all cached posts by name, location, or text
 - **Find** users by name
 - **Edit your profile** with searchable bio and tags
+- **Browse a shared store** of text-only products from every user
+- **Publish products** with categories and subcategories
 - **Vouch** for good users, downvote bad ones
 - **Direct message** anyone by clicking their name
 
@@ -63,6 +65,8 @@ On first launch, click **Set Name** to pick a name and location.
 ## Commands in the GUI
 
 - **Edit Profile** — update your name, location, searchable bio, and tags
+- **Store** — browse or publish products with name, category, subcategory, type,
+  serial number, price, and description/contact information
 - **Refresh Peers** — update the user list
 - **Send (Enter)** — send a chat message to the selected peer (or broadcast)
 - **Post (Ctrl+Enter)** — publish a blog post to everyone
