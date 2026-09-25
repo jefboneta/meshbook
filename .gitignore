@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+meshbook_state.json
+meshfile_state.json
+termnet_state.json
+received/
+shared/
+.venv/
+venv/
+*.log
