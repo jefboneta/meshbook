@@ -489,6 +489,8 @@ class App:
                                                           expand=True, padx=6)
         tk.Button(top, text="Add Product", command=self.dialog_product,
                   bg="#2a5a3a", fg="#eee", relief=tk.FLAT).pack(side=tk.RIGHT)
+        tk.Button(top, text="Edit Product", command=self.edit_selected_product,
+                  bg="#3a4a6a", fg="#eee", relief=tk.FLAT).pack(side=tk.RIGHT, padx=6)
 
         columns = ("seller", "name", "category", "subcategory", "type",
                    "serial", "price", "details")
@@ -530,11 +532,31 @@ class App:
             )
             if query and query not in ' '.join(str(value) for value in values).lower():
                 continue
-            self.store_tree.insert('', tk.END, values=values)
+            self.store_tree.insert('', tk.END, iid=key, values=values)
 
     def dialog_product(self):
+        self.show_product_dialog()
+
+    def edit_selected_product(self):
+        selected = self.store_tree.selection()
+        if not selected:
+            messagebox.showinfo("Edit product", "Select one of your products first.")
+            return
+        product_key = selected[0]
+        with self.lock:
+            product = dict(self.state.get('products', {}).get(product_key, {}))
+        if not product:
+            messagebox.showerror("Edit product", "That product is no longer available.")
+            self.refresh_store()
+            return
+        if product.get('seller') != self.state['my_id']:
+            messagebox.showerror("Edit product", "You can only edit your own products.")
+            return
+        self.show_product_dialog(product_key, product)
+
+    def show_product_dialog(self, product_key=None, existing=None):
         win = tk.Toplevel(self.store_window)
-        win.title("Add store product")
+        win.title("Edit store product" if existing else "Add store product")
         win.geometry("430x430")
         win.configure(bg="#1a1a1a")
         fields = (
@@ -550,13 +572,13 @@ class App:
         for label, key in fields:
             tk.Label(win, text=label + ":", bg="#1a1a1a", fg="#eee").pack(
                 anchor=tk.W, padx=10, pady=(7, 0))
-            variables[key] = tk.StringVar()
+            variables[key] = tk.StringVar(value=(existing or {}).get(key, ''))
             tk.Entry(win, textvariable=variables[key], bg="#222", fg="#eee",
                      insertbackground="#8cf").pack(fill=tk.X, padx=10)
 
         def save():
             product = {
-                'id': uuid.uuid4().hex[:10],
+                'id': (existing or {}).get('id', uuid.uuid4().hex[:10]),
                 'name': variables['name'].get().strip()[:80],
                 'category': variables['category'].get().strip()[:40],
                 'subcategory': variables['subcategory'].get().strip()[:40],
@@ -570,7 +592,8 @@ class App:
                 messagebox.showerror("Product", "Product name and category are required.")
                 return
             with self.lock:
-                self.state['products'][f"{self.state['my_id']}/{product['id']}"] = product
+                key = product_key or f"{self.state['my_id']}/{product['id']}"
+                self.state['products'][key] = product
             self.save_state()
             self.publish(self.make_frame('PRODUCT', json.dumps(product, ensure_ascii=True)))
             self.refresh_store()
