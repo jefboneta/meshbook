@@ -1,11 +1,12 @@
 # MeshBook
 
-A GUI chat and blog network that runs over Meshtastic's public MQTT broker.
-No server. No account. Just install and talk.
+A GUI chat and blog network for Meshtastic LoRa networks.
+MeshBook uses Meshtastic's public MQTT bridge to connect LoRa users across
+the world. No server. No account. Just install and talk.
 
 ## What it does
 
-- **Chat** with anyone running MeshBook, worldwide
+- **Chat** with anyone running MeshBook through the Meshtastic LoRa network
 - **Post** blog entries that persist across sessions
 - **Search** all cached posts by name, location, or text
 - **Find** users by name
@@ -68,10 +69,11 @@ On first launch, click **Set Name** to pick a name and location.
 
 ## How it works
 
-MeshBook uses MQTT as a shared broadcast bus. Every running instance subscribes
-to the same topic on `mqtt.meshtastic.org` and publishes its identity, posts,
-and chat messages there. All state is stored locally in `meshbook_state.json`;
-there is no server.
+MeshBook uses Meshtastic LoRa radios and the public MQTT bridge as a shared
+broadcast bus. Every running instance subscribes to the same topic on
+`mqtt.meshtastic.org` and publishes its identity, posts, and chat messages
+there. All state is stored locally in `meshbook_state.json`; there is no
+central application server.
 
 The protocol is minimal:
 
