@@ -8,6 +8,7 @@ import sys
 import json
 import time
 import uuid
+import tempfile
 import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
@@ -78,11 +79,25 @@ class App:
         with self.lock:
             to_save = dict(self.state)
             to_save['seen_seqs'] = list(self.state['seen_seqs'])
+        state_dir = os.path.dirname(os.path.abspath(STATE_FILE))
+        temp_path = None
         try:
-            with open(STATE_FILE, 'w') as f:
+            os.makedirs(state_dir, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                    mode='w', encoding='utf-8', dir=state_dir,
+                    prefix='.meshbook-state-', suffix='.tmp',
+                    delete=False) as f:
+                temp_path = f.name
                 json.dump(to_save, f, indent=2)
-        except Exception:
-            pass
+            os.replace(temp_path, STATE_FILE)
+        except (OSError, TypeError, ValueError) as e:
+            print(f"[state] save error for {STATE_FILE}: {e}", file=sys.stderr)
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError as cleanup_error:
+                    print(f"[state] temporary file cleanup error: {cleanup_error}",
+                          file=sys.stderr)
 
     # ---------- UI ----------
 
@@ -250,11 +265,23 @@ class App:
 
     def publish(self, frame):
         if self.mqtt_client is None:
+            print("[mqtt] publish skipped: client is not initialized", file=sys.stderr)
             return
         try:
-            self.mqtt_client.publish(MQTT_TOPIC, frame)
-        except Exception:
-            pass
+            result = self.mqtt_client.publish(MQTT_TOPIC, frame)
+            if result.rc != mqtt.MQTT_ERR_SUCCESS:
+                print(f"[mqtt] publish failed with code {result.rc}", file=sys.stderr)
+        except Exception as e:
+            print(f"[mqtt] publish error: {e}", file=sys.stderr)
+
+    def publish_products(self):
+        with self.lock:
+            products = list(self.state.get('products', {}).values())
+            my_id = self.state['my_id']
+        for product in products:
+            if product.get('seller', my_id) == my_id:
+                self.publish(self.make_frame(
+                    'PRODUCT', json.dumps(product, ensure_ascii=True)))
 
     def handle_frame(self, src_id, f):
         cmd = f['cmd']
@@ -363,8 +390,11 @@ class App:
             product['updated_at'] = now
             with self.lock:
                 self.state['products'][f"{src_id}/{product_id}"] = product
-            if hasattr(self, 'store_window') and self.store_window.winfo_exists():
-                self.refresh_store()
+            self.save_state()
+            self.root.after(0, self.refresh_store)
+
+        elif cmd == 'STORE_SYNC':
+            self.publish_products()
 
     # ---------- MQTT ----------
 
@@ -372,6 +402,7 @@ class App:
         client.subscribe(MQTT_TOPIC)
         self.status_label.config(text=f"connected to {MQTT_HOST}")
         self.announce()
+        self.publish(self.make_frame('STORE_SYNC'))
 
     def on_message(self, client, userdata, msg):
         try:
@@ -410,11 +441,7 @@ class App:
             loc = profile['location']
         self.publish(self.make_frame('HELLO', f"{name}|{loc}"))
         self.publish(self.make_frame('PROFILE', json.dumps(profile, ensure_ascii=True)))
-        with self.lock:
-            products = list(self.state.get('products', {}).values())
-        for product in products:
-            if product.get('seller', self.state['my_id']) == self.state['my_id']:
-                self.publish(self.make_frame('PRODUCT', json.dumps(product, ensure_ascii=True)))
+        self.publish_products()
         # mark ourselves as online
         with self.lock:
             self.state['users'][self.state['my_id']] = {

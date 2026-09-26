@@ -81,6 +81,9 @@ broadcast bus. Every running instance subscribes to the same topic on
 `mqtt.meshtastic.org` and publishes its identity, posts, and chat messages
 there. All state is stored locally in `meshbook_state.json`; there is no
 central application server.
+Store listings are saved to that state file as they arrive. When a client
+connects, it requests the catalogs from currently connected peers; peers
+respond by sending their saved listings.
 
 The protocol is minimal:
 
@@ -88,7 +91,8 @@ The protocol is minimal:
 MB1|<command>|<seq>|<node_id>|<args>
 ```
 
-Commands: `HELLO`, `POST`, `CHAT`, `VOUCH`.
+Commands: `HELLO`, `PROFILE`, `POST`, `CHAT`, `VOUCH`, `PRODUCT`,
+`STORE_SYNC`.
 
 ## Privacy
 
